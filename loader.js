@@ -2,6 +2,7 @@
 
 var	nconf = require('nconf'),
 	net = require('net'),
+	http = require('http'),
 	fs = require('fs'),
 	url = require('url'),
 	path = require('path'),
@@ -180,23 +181,54 @@ Loader.start = function(callback) {
 	var port = urlObject.port || nconf.get('port') || nconf.get('PORT') || 4567;
  	nconf.set('port', port);
 
-	server = net.createServer(function(connection) {
-		// remove this once node 0.12.x ships, see https://github.com/elad/node-cluster-socket.io/issues/4
-		connection._handle.readStop();
+	// server = net.createServer(function(connection) {
+	// 	// remove this once node 0.12.x ships, see https://github.com/elad/node-cluster-socket.io/issues/4
+	// 	connection._handle.readStop();
+
+	// 	var workers = clusterWorkers();
+	// 	var worker = workers[workerIndex(connection.remoteAddress, numProcs)];
+
+	// 	if (worker) {
+	// 		handles[handleIndex] = connection._handle;
+
+	// 		worker.send({action: 'sticky-session:connection', handleIndex: handleIndex}, connection);
+	// 		handleIndex ++;
+	// 	} else {
+	// 		console.log('Cant find worker! Worker count : ' + workers.length);
+	// 	}
+
+	// }).listen(port);
+
+	var proxy = http.createServer(function(req, res) {
+		console.log('create server');
+		console.log(req.headers['x-forwarded-for']);
+		console.log(req.connection.remoteAddress);
+
+		console.log(socket);
+
+		var socket = req.connection;
+		socket._handle.readStop();
 
 		var workers = clusterWorkers();
-		var worker = workers[workerIndex(connection.remoteAddress, numProcs)];
-
+		var worker = workers[workerIndex(socket.remoteAddress, numProcs)];
 		if (worker) {
-			handles[handleIndex] = connection._handle;
+	 		handles[handleIndex] = socket._handle;
 
-			worker.send({action: 'sticky-session:connection', handleIndex: handleIndex}, connection);
+			worker.send({action: 'sticky-session:connection', handleIndex: handleIndex}, socket);
 			handleIndex ++;
 		} else {
 			console.log('Cant find worker! Worker count : ' + workers.length);
 		}
 
-	}).listen(port);
+		res.writeHead(200, {'Content-Type': 'text/plain'});
+		res.end('okay');
+	});
+
+	proxy.on('connection', function(socket) {
+		console.log('connection');
+	});
+
+	proxy.listen(port);
 
 	if (callback) {
 		callback();
@@ -236,6 +268,8 @@ function workerIndex(ip, numProcs) {
 			s += ip[i];
 		}
 	}
+
+	console.log(ip + ' ' + Number(s) % numProcs || 0);
 	return Number(s) % numProcs || 0;
 }
 

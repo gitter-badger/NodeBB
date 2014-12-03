@@ -179,56 +179,25 @@ Loader.start = function(callback) {
 
 	var urlObject = url.parse(nconf.get('url'));
 	var port = urlObject.port || nconf.get('port') || nconf.get('PORT') || 4567;
- 	nconf.set('port', port);
+	nconf.set('port', port);
 
-	// server = net.createServer(function(connection) {
-	// 	// remove this once node 0.12.x ships, see https://github.com/elad/node-cluster-socket.io/issues/4
-	// 	connection._handle.readStop();
-
-	// 	var workers = clusterWorkers();
-	// 	var worker = workers[workerIndex(connection.remoteAddress, numProcs)];
-
-	// 	if (worker) {
-	// 		handles[handleIndex] = connection._handle;
-
-	// 		worker.send({action: 'sticky-session:connection', handleIndex: handleIndex}, connection);
-	// 		handleIndex ++;
-	// 	} else {
-	// 		console.log('Cant find worker! Worker count : ' + workers.length);
-	// 	}
-
-	// }).listen(port);
-
-	var proxy = http.createServer(function(req, res) {
-		console.log('create server');
-		console.log(req.headers['x-forwarded-for']);
-		console.log(req.connection.remoteAddress);
-
-		console.log(socket);
-
-		var socket = req.connection;
-		socket._handle.readStop();
+	server = net.createServer(function(connection) {
+		// remove this once node 0.12.x ships, see https://github.com/elad/node-cluster-socket.io/issues/4
+		connection._handle.readStop();
 
 		var workers = clusterWorkers();
-		var worker = workers[workerIndex(socket.remoteAddress, numProcs)];
-		if (worker) {
-	 		handles[handleIndex] = socket._handle;
+		var worker = workers[workerIndex(connection.remoteAddress, numProcs)];
 
-			worker.send({action: 'sticky-session:connection', handleIndex: handleIndex}, socket);
+		if (worker) {
+			handles[handleIndex] = connection._handle;
+
+			worker.send({action: 'sticky-session:connection', handleIndex: handleIndex}, connection);
 			handleIndex ++;
 		} else {
 			console.log('Cant find worker! Worker count : ' + workers.length);
 		}
 
-		res.writeHead(200, {'Content-Type': 'text/plain'});
-		res.end('okay');
-	});
-
-	proxy.on('connection', function(socket) {
-		console.log('connection');
-	});
-
-	proxy.listen(port);
+	}).listen(port);
 
 	if (callback) {
 		callback();

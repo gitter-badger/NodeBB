@@ -1,5 +1,5 @@
 "use strict";
-/*global define, socket, app, Mousetrap, Hammer, RELATIVE_PATH*/
+/*global define, socket, app, ajaxify, utils, Mousetrap, Hammer, RELATIVE_PATH*/
 
 var admin = {};
 
@@ -39,7 +39,10 @@ var admin = {};
 			var url = data.url;
 
 			selectMenuItem(data.url);
+			setupHeaderMenu();
 		});
+
+		$(window).resize(setupHeaderMenu);
 	});
 
 	socket.emit('admin.config.get', function(err, config) {
@@ -150,5 +153,20 @@ var admin = {};
 		var caret = ' <i class="fa fa-angle-right"></i> ';
 		
 		$('#breadcrumbs').html(caret + Array.prototype.slice.call(arguments).join(caret));
+	}
+
+	function setupHeaderMenu() {
+		var env = utils.findBootstrapEnvironment();
+
+		if (env !== 'lg') {
+			if ($('.mobile-header').length || $('#content .col-lg-9').first().height() < 2000) {
+				return;
+			}
+
+			($('#content .col-lg-3').first().clone().addClass('mobile-header'))
+				.insertBefore($('#content .col-lg-9').first());
+		} else {
+			$('.mobile-header').remove();
+		}
 	}
 }());

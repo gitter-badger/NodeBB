@@ -36,7 +36,7 @@ middleware.authenticate = function(req, res, next) {
 
 middleware.applyCSRF = csrf();
 
-middleware.ensureLoggedIn = ensureLoggedIn.ensureLoggedIn();
+middleware.ensureLoggedIn = ensureLoggedIn.ensureLoggedIn(nconf.get('relative_path') + '/login');
 
 middleware.updateLastOnlineTime = function(req, res, next) {
 	if (req.user) {
@@ -189,7 +189,7 @@ middleware.isAdmin = function(req, res, next) {
 		});
 	}
 	if (!req.user) {
-		render();
+		return render();
 	}
 
 	user.isAdministrator((req.user && req.user.uid) ? req.user.uid : 0, function (err, isAdmin) {
@@ -463,8 +463,8 @@ middleware.processRender = function(req, res, next) {
 			if (res.locals.renderHeader) {
 				middleware.renderHeader(req, res, function(err, template) {
 					str = template + str;
-
-					translator.translate(str, res.locals.config.userLang, function(translated) {
+					var language = res.locals.config ? res.locals.config.userLang || 'en_GB' : 'en_GB';
+					translator.translate(str, language, function(translated) {
 						fn(err, translated);
 					});
 				});
@@ -555,6 +555,18 @@ middleware.maintenanceMode = function(req, res, next) {
 		}
 	} else {
 		return next();
+	}
+};
+
+middleware.publicTagListing = function(req, res, next) {
+	if ((!meta.config.hasOwnProperty('publicTagListing') || parseInt(meta.config.publicTagListing, 10) === 1)) {
+		next();
+	} else {
+		if (res.locals.isAPI) {
+			res.sendStatus(401);
+		} else {
+			middleware.ensureLoggedIn(req, res, next);
+		}
 	}
 };
 

@@ -36,6 +36,7 @@ Sockets.init = function(server) {
 	io.on('connection', onConnection);
 
 	io.listen(server, {
+		pingTimeout: 30,
 		transports: ['websocket', 'polling']
 	});
 
@@ -65,7 +66,7 @@ function onConnect(socket) {
 
 		async.parallel({
 			user: function(next) {
-				user.getUserFields(socket.uid, ['username', 'userslug', 'picture', 'status'], next);
+				user.getUserFields(socket.uid, ['username', 'userslug', 'picture', 'status', 'email:confirmed'], next);
 			},
 			isAdmin: function(next) {
 				user.isAdministrator(socket.uid, next);
@@ -74,13 +75,10 @@ function onConnect(socket) {
 			if (err || !userData.user) {
 				return;
 			}
-			socket.emit('event:connect', {
-				username: userData.user.username,
-				userslug: userData.user.userslug,
-				picture: userData.user.picture,
-				isAdmin: userData.isAdmin,
-				uid: socket.uid
-			});
+			userData.user.uid = socket.uid;
+			userData.user.isAdmin = userData.isAdmin;
+			userData.user['email:confirmed'] = parseInt(userData.user['email:confirmed'], 10) === 1;
+			socket.emit('event:connect', userData.user);
 
 			socket.broadcast.emit('event:user_status_change', {uid: socket.uid, status: userData.user.status});
 		});
@@ -121,7 +119,7 @@ function onMessage(socket, payload) {
 	}
 
 	if (ratelimit.isFlooding(socket)) {
-		winston.warn('[socket.io] Too many emits! Disconnecting uid : ' + socket.uid + '. Message : ' + payload.name);
+		winston.warn('[socket.io] Too many emits! Disconnecting uid : ' + socket.uid + '. Message : ' + eventName);
 		return socket.disconnect();
 	}
 
@@ -253,7 +251,7 @@ Sockets.reqFromSocket = function(socket) {
 		referer = headers.referer || '';
 
 	return {
-		ip: socket.ip,
+		ip: headers['x-forwarded-for'] || socket.ip,
 		host: host,
 		protocol: socket.request.connection.encrypted ? 'https' : 'http',
 		secure: !!socket.request.connection.encrypted,
@@ -273,7 +271,7 @@ Sockets.isUsersOnline = function(uids, callback) {
 	callback(null, uids.map(Sockets.isUserOnline));
 };
 
-Sockets.updateRoomBrowsingText = function (roomName, selfUid) {
+Sockets.getUsersInRoom = function (uid, roomName, callback) {
 	if (!roomName) {
 		return;
 	}
@@ -281,22 +279,22 @@ Sockets.updateRoomBrowsingText = function (roomName, selfUid) {
 	var	uids = Sockets.getUidsInRoom(roomName);
 	var total = uids.length;
 	uids = uids.slice(0, 9);
-	if (selfUid) {
-		uids = [selfUid].concat(uids);
+	if (uid) {
+		uids = [uid].concat(uids);
 	}
 	if (!uids.length) {
-		return;
+		return callback(null, {users: [], total: 0 , room: roomName});
 	}
 	user.getMultipleUserFields(uids, ['uid', 'username', 'userslug', 'picture', 'status'], function(err, users) {
 		if (err) {
-			return;
+			return callback(err);
 		}
 
 		users = users.filter(function(user) {
 			return user && user.status !== 'offline';
 		});
 
-		io.sockets.in(roomName).emit('event:update_users_in_room', {
+		callback(null, {
 			users: users,
 			room: roomName,
 			total: Math.max(0, total - uids.length)

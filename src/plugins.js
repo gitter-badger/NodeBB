@@ -602,12 +602,21 @@ var fs = require('fs'),
 				}
 
 				async.each(installedPlugins, function(plugin, next) {
+					// If it errored out because a package.json or plugin.json couldn't be read, no need to do this stuff
+					if (plugin.error) {
+						pluginMap[plugin.id] = pluginMap[plugin.id] || {};
+						pluginMap[plugin.id].installed = true;
+						pluginMap[plugin.id].error = true;
+						return next();
+					}
+
 					pluginMap[plugin.id] = pluginMap[plugin.id] || {};
 					pluginMap[plugin.id].id = pluginMap[plugin.id].id || plugin.id;
 					pluginMap[plugin.id].name = plugin.name || pluginMap[plugin.id].name;
 					pluginMap[plugin.id].description = plugin.description;
 					pluginMap[plugin.id].url = pluginMap[plugin.id].url || plugin.url;
 					pluginMap[plugin.id].installed = true;
+					pluginMap[plugin.id].error = plugin.error || false;
 					pluginMap[plugin.id].active = plugin.active;
 					pluginMap[plugin.id].version = plugin.version;
 					pluginMap[plugin.id].latest = pluginMap[plugin.id].latest || plugin.version;
@@ -703,25 +712,32 @@ var fs = require('fs'),
 							}, next);
 						},
 						function(results, next) {
-							var packageInfo, pluginInfo;
+							var packageName = path.basename(file),
+								packageInfo, pluginInfo;
 
 							try {
 								packageInfo = JSON.parse(results.packageJSON);
 								pluginInfo = JSON.parse(results.pluginJSON);
 							} catch (err) {
-								winston.warn("Plugin: " + file + " is corrupted or invalid. Please check plugin.json for errors.");
-								return next(err, null);
+								winston.warn("Plugin `" + packageName + "` is corrupted or invalid. Please check either package.json or plugin.json for errors.");
+								return next(null, {
+									id: packageName,
+									installed: true,
+									error: true,
+									active: null
+								});
 							}
 
 							Plugins.isActive(packageInfo.name, function(err, active) {
 								if (err) {
-									next(new Error('no-active-state'));
+									return next(new Error('no-active-state'));
 								}
 
 								delete pluginInfo.hooks;
 								delete pluginInfo.library;
 								pluginInfo.active = active;
 								pluginInfo.installed = true;
+								pluginInfo.error = false;
 								pluginInfo.version = packageInfo.version;
 
 								next(null, pluginInfo);
